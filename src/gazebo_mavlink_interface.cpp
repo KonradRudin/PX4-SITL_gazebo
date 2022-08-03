@@ -719,72 +719,94 @@ void GazeboMavlinkInterface::SendSensorMessages()
 void GazeboMavlinkInterface::SendGroundTruth()
 {
   // ground truth
-  ignition::math::Quaterniond q_gr = ignition::math::Quaterniond(
-    last_imu_message_.orientation().w(),
-    last_imu_message_.orientation().x(),
-    last_imu_message_.orientation().y(),
-    last_imu_message_.orientation().z());
+  std::vector<std::string> link_names{"base_link", "rotor_0"};
 
-  ignition::math::Quaterniond q_FLU_to_NED = q_ENU_to_NED * q_gr;
-  ignition::math::Quaterniond q_nb = q_FLU_to_NED * q_FLU_to_FRD.Inverse();
+  for (uint16_t link_idx = 0;link_idx < link_names.size(); link_idx++)
+  {
+    physics::LinkPtr link = model_->GetLink(link_names[link_idx]);
+    if (link)
+    {
+      #if GAZEBO_MAJOR_VERSION >= 9
+        ignition::math::Pose3d pose_gr = link->WorldPose();
+      #else
+        ignition::math::Pose3d pose_gr = ignitionFromGazeboMath(link->GetWorldPose());
+      #endif
 
-#if GAZEBO_MAJOR_VERSION >= 9
-  ignition::math::Vector3d vel_b = q_FLU_to_FRD.RotateVector(model_->RelativeLinearVel());
-  ignition::math::Vector3d vel_n = q_ENU_to_NED.RotateVector(model_->WorldLinearVel());
-  ignition::math::Vector3d omega_nb_b = q_FLU_to_FRD.RotateVector(model_->RelativeAngularVel());
-#else
-  ignition::math::Vector3d vel_b = q_FLU_to_FRD.RotateVector(ignitionFromGazeboMath(model_->GetRelativeLinearVel()));
-  ignition::math::Vector3d vel_n = q_ENU_to_NED.RotateVector(ignitionFromGazeboMath(model_->GetWorldLinearVel()));
-  ignition::math::Vector3d omega_nb_b = q_FLU_to_FRD.RotateVector(ignitionFromGazeboMath(model_->GetRelativeAngularVel()));
-#endif
+      ignition::math::Quaterniond q_gr = pose_gr.Rot();
+      /*ignition::math::Quaterniond q_gr = ignition::math::Quaterniond(
+        last_imu_message_.orientation().w(),
+        last_imu_message_.orientation().x(),
+        last_imu_message_.orientation().y(),
+        last_imu_message_.orientation().z());*/
 
-#if GAZEBO_MAJOR_VERSION >= 9
-  ignition::math::Vector3d accel_true_ned = q_FLU_to_NED.RotateVector(model_->RelativeLinearAccel());
-#else
-  ignition::math::Vector3d accel_true_ned = q_FLU_to_NED.RotateVector(ignitionFromGazeboMath(model_->GetRelativeLinearAccel()));
-#endif
+      ignition::math::Quaterniond q_FLU_to_NED = q_ENU_to_NED * q_gr;
+      ignition::math::Quaterniond q_nb = q_FLU_to_NED * q_FLU_to_FRD.Inverse();
 
-  // send ground truth
-  mavlink_hil_state_quaternion_t hil_state_quat;
-#if GAZEBO_MAJOR_VERSION >= 9
-  hil_state_quat.time_usec = std::round(world_->SimTime().Double() * 1e6);
-#else
-  hil_state_quat.time_usec = std::round(world_->GetSimTime().Double() * 1e6);
-#endif
-  hil_state_quat.attitude_quaternion[0] = q_nb.W();
-  hil_state_quat.attitude_quaternion[1] = q_nb.X();
-  hil_state_quat.attitude_quaternion[2] = q_nb.Y();
-  hil_state_quat.attitude_quaternion[3] = q_nb.Z();
+    #if GAZEBO_MAJOR_VERSION >= 9
+      ignition::math::Vector3d vel_b = q_FLU_to_FRD.RotateVector(link->RelativeLinearVel());
+      ignition::math::Vector3d vel_n = q_ENU_to_NED.RotateVector(link->WorldLinearVel());
+      ignition::math::Vector3d omega_nb_b = q_FLU_to_FRD.RotateVector(link->RelativeAngularVel());
+    #else
+      ignition::math::Vector3d vel_b = q_FLU_to_FRD.RotateVector(ignitionFromGazeboMath(link->GetRelativeLinearVel()));
+      ignition::math::Vector3d vel_n = q_ENU_to_NED.RotateVector(ignitionFromGazeboMath(link->GetWorldLinearVel()));
+      ignition::math::Vector3d omega_nb_b = q_FLU_to_FRD.RotateVector(ignitionFromGazeboMath(link->GetRelativeAngularVel()));
+    #endif
 
-  hil_state_quat.rollspeed = omega_nb_b.X();
-  hil_state_quat.pitchspeed = omega_nb_b.Y();
-  hil_state_quat.yawspeed = omega_nb_b.Z();
+    #if GAZEBO_MAJOR_VERSION >= 9
+      ignition::math::Vector3d accel_true_ned = q_FLU_to_NED.RotateVector(link->RelativeLinearAccel());
+    #else
+      ignition::math::Vector3d accel_true_ned = q_FLU_to_NED.RotateVector(ignitionFromGazeboMath(link->GetRelativeLinearAccel()));
+    #endif
 
-  hil_state_quat.lat = groundtruth_lat_rad_ * 180 / M_PI * 1e7;
-  hil_state_quat.lon = groundtruth_lon_rad_ * 180 / M_PI * 1e7;
-  hil_state_quat.alt = groundtruth_altitude_ * 1000;
+      // send ground truth
+      mavlink_hil_state_quaternion_t hil_state_quat;
+    #if GAZEBO_MAJOR_VERSION >= 9
+      hil_state_quat.time_usec = std::round(world_->SimTime().Double() * 1e6);
+    #else
+      hil_state_quat.time_usec = std::round(world_->GetSimTime().Double() * 1e6);
+    #endif
+      hil_state_quat.attitude_quaternion[0] = q_nb.W();
+      hil_state_quat.attitude_quaternion[1] = q_nb.X();
+      hil_state_quat.attitude_quaternion[2] = q_nb.Y();
+      hil_state_quat.attitude_quaternion[3] = q_nb.Z();
 
-  hil_state_quat.vx = vel_n.X() * 100;
-  hil_state_quat.vy = vel_n.Y() * 100;
-  hil_state_quat.vz = vel_n.Z() * 100;
+      hil_state_quat.rollspeed = omega_nb_b.X();
+      hil_state_quat.pitchspeed = omega_nb_b.Y();
+      hil_state_quat.yawspeed = omega_nb_b.Z();
 
-  // assumed indicated airspeed due to flow aligned with pitot (body x)
-  hil_state_quat.ind_airspeed = vel_b.X();
+      hil_state_quat.lat = groundtruth_lat_rad_ * 180 / M_PI * 1e7;
+      hil_state_quat.lon = groundtruth_lon_rad_ * 180 / M_PI * 1e7;
+      hil_state_quat.alt = groundtruth_altitude_ * 1000;
 
-#if GAZEBO_MAJOR_VERSION >= 9
-  hil_state_quat.true_airspeed = (model_->WorldLinearVel() -  wind_vel_).Length() * 100;
-#else
-  hil_state_quat.true_airspeed = (model_->GetWorldLinearVel() -  wind_vel_).GetLength() * 100;
-#endif
+      hil_state_quat.vx = vel_n.X() * 100;
+      hil_state_quat.vy = vel_n.Y() * 100;
+      hil_state_quat.vz = vel_n.Z() * 100;
 
-  hil_state_quat.xacc = accel_true_ned.X() * 1000;
-  hil_state_quat.yacc = accel_true_ned.Y() * 1000;
-  hil_state_quat.zacc = accel_true_ned.Z() * 1000;
+      // assumed indicated airspeed due to flow aligned with pitot (body x)
+      hil_state_quat.ind_airspeed = vel_b.X();
 
-  if (!hil_mode_ || (hil_mode_ && hil_state_level_)) {
-    mavlink_message_t msg;
-    mavlink_msg_hil_state_quaternion_encode_chan(1, 200, MAVLINK_COMM_0, &msg, &hil_state_quat);
-    mavlink_interface_->send_mavlink_message(&msg);
+    #if GAZEBO_MAJOR_VERSION >= 9
+      hil_state_quat.true_airspeed = (link->WorldLinearVel() -  wind_vel_).Length() * 100;
+    #else
+      hil_state_quat.true_airspeed = (link->GetWorldLinearVel() -  wind_vel_).GetLength() * 100;
+    #endif
+
+      hil_state_quat.xacc = accel_true_ned.X() * 1000;
+      hil_state_quat.yacc = accel_true_ned.Y() * 1000;
+      hil_state_quat.zacc = accel_true_ned.Z() * 1000;
+
+      if (!hil_mode_ || (hil_mode_ && hil_state_level_)) {
+        mavlink_message_t msg;
+        uint32_t component_id = 200;
+        if (link_idx != 0)
+        {
+          component_id = 30 + link_idx;
+        }
+
+        mavlink_msg_hil_state_quaternion_encode_chan(1, component_id, MAVLINK_COMM_0, &msg, &hil_state_quat);
+        mavlink_interface_->send_mavlink_message(&msg);
+      }
+    }
   }
 }
 
