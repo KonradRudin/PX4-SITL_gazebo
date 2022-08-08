@@ -774,9 +774,18 @@ void GazeboMavlinkInterface::SendGroundTruth()
       hil_state_quat.pitchspeed = omega_nb_b.Y();
       hil_state_quat.yawspeed = omega_nb_b.Z();
 
-      hil_state_quat.lat = groundtruth_lat_rad_ * 180 / M_PI * 1e7;
-      hil_state_quat.lon = groundtruth_lon_rad_ * 180 / M_PI * 1e7;
-      hil_state_quat.alt = groundtruth_altitude_ * 1000;
+      // calculate relative position with respect to base link.
+      #if GAZEBO_MAJOR_VERSION >= 9
+        ignition::math::Pose3d base_gr = model_->WorldPose();
+      #else
+        ignition::math::Pose3d base_gr = ignitionFromGazeboMath(model_->GetWorldPose());
+      #endif
+      ignition::math::Vector3d rel_pos = pose_gr.Pos() - base_gr.Pos();
+      auto lat_lon = reproject(rel_pos, groundtruth_lat_rad_, groundtruth_lon_rad_, groundtruth_altitude_);
+
+      hil_state_quat.lat = lat_lon.first * 180 / M_PI * 1e7;
+      hil_state_quat.lon = lat_lon.second * 180 / M_PI * 1e7;
+      hil_state_quat.alt = (groundtruth_altitude_ + rel_pos[2]) * 1000;
 
       hil_state_quat.vx = vel_n.X() * 100;
       hil_state_quat.vy = vel_n.Y() * 100;
