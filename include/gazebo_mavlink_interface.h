@@ -152,6 +152,7 @@ private:
   std::string motor_velocity_reference_pub_topic_{kDefaultMotorVelocityReferencePubTopic};
   std::string mavlink_control_sub_topic_;
   std::string link_name_;
+  std::vector<std::string> link_names_gt_;
 
   transport::NodePtr node_handle_;
   transport::PublisherPtr motor_velocity_reference_pub_;

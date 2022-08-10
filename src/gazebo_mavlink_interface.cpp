@@ -203,6 +203,22 @@ void GazeboMavlinkInterface::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf
   node_handle_ = transport::NodePtr(new transport::Node());
   node_handle_->Init(namespace_);
 
+  link_names_gt_.clear();
+  if (_sdf->HasElement("link_names_gt")) {
+    std::string link_names_gt = _sdf->GetElement("link_names_gt")->Get<std::string>();
+
+    size_t pos = 0u;
+    std::string delimiter = " ";
+    while ((pos = link_names_gt.find(delimiter)) != std::string::npos) {
+    link_names_gt_.push_back(link_names_gt.substr(0, pos));
+    link_names_gt.erase(0, pos + delimiter.length());
+    }
+    link_names_gt_.push_back(link_names_gt);
+  } else {
+    link_names_gt_.push_back("base_link");
+    gzwarn << "[gazebo_mavlink_interface] No link name specified for ground truth. Use base_link instead.\n";
+  }
+
   getSdfParam<std::string>(_sdf, "motorSpeedCommandPubTopic", motor_velocity_reference_pub_topic_,
       motor_velocity_reference_pub_topic_);
   getSdfParam<std::string>(_sdf, "imuSubTopic", imu_sub_topic_, imu_sub_topic_);
@@ -719,11 +735,9 @@ void GazeboMavlinkInterface::SendSensorMessages()
 void GazeboMavlinkInterface::SendGroundTruth()
 {
   // ground truth
-  std::vector<std::string> link_names{"base_link", "rotor_0"};
-
-  for (uint16_t link_idx = 0;link_idx < link_names.size(); link_idx++)
+  for (uint16_t link_idx = 0;link_idx < link_names_gt_.size(); link_idx++)
   {
-    physics::LinkPtr link = model_->GetLink(link_names[link_idx]);
+    physics::LinkPtr link = model_->GetLink(link_names_gt_[link_idx]);
     if (link)
     {
       #if GAZEBO_MAJOR_VERSION >= 9
